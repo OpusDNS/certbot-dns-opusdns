@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "OpusDNS DNS Authenticator plugin for Certbot"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 authors = [
     {name = "OpusDNS", email = "support@opusdns.com"}
 ]
@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Plugins",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
