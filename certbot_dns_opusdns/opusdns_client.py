@@ -1,9 +1,8 @@
 """OpusDNS API client for DNS operations."""
 import logging
 import time
-from typing import List, Optional
+from typing import Optional
 
-import dns.resolver
 import httpx
 from certbot import errors
 
@@ -18,18 +17,13 @@ class OpusDNSClient:
         api_key: str,
         api_endpoint: str = "https://api.opusdns.com",
         ttl: int = 60,
-        polling_interval: int = 6,
-        max_attempts: int = 10,
     ):
         self.api_key = api_key
         self.api_endpoint = api_endpoint.rstrip("/")
         self.ttl = ttl
-        self.polling_interval = polling_interval
-        self.max_attempts = max_attempts
-        self._zone_cache: Optional[List[str]] = None
         
     def add_txt_record(self, record_name: str, record_content: str, ttl: int) -> None:
-        """Add a TXT record and wait for DNS propagation.
+        """Add a TXT record.
         
         Args:
             record_name: Full DNS name (e.g., _acme-challenge.example.com)
@@ -37,7 +31,7 @@ class OpusDNSClient:
             ttl: TTL in seconds
             
         Raises:
-            errors.PluginError: If API call fails or DNS doesn't propagate
+            errors.PluginError: If API call fails
         """
         zone = self._find_zone(record_name)
         relative_name = self._get_relative_name(record_name, zone)
@@ -55,9 +49,6 @@ class OpusDNSClient:
             )
         except Exception as e:
             raise errors.PluginError(f"Failed to add TXT record: {e}")
-        
-        # Poll DNS to verify propagation
-        self._wait_for_propagation(record_name, record_content)
         
     def del_txt_record(self, record_name: str, record_content: str) -> None:
         """Remove a TXT record (best-effort).
@@ -87,7 +78,9 @@ class OpusDNSClient:
             logger.warning(f"Failed to remove TXT record (non-fatal): {e}")
 
     def _find_zone(self, fqdn: str) -> str:
-        """Find the OpusDNS zone for a given FQDN.
+        """Find the OpusDNS zone for a given FQDN by checking the API.
+        
+        Iterates through domain parts until a valid zone is found.
         
         Args:
             fqdn: Fully qualified domain name
@@ -98,72 +91,34 @@ class OpusDNSClient:
         Raises:
             errors.PluginError: If no matching zone found
         """
-        zones = self._get_zones()
-        
         # Normalize FQDN (remove trailing dot if present)
         fqdn = fqdn.rstrip(".")
-        
-        # Extract potential zone names from FQDN
         parts = fqdn.split(".")
-        candidates = []
-        for i in range(len(parts)):
-            candidates.append(".".join(parts[i:]))
         
-        # Match longest zone name
-        for candidate in candidates:
-            for zone in zones:
-                zone_name = zone.rstrip(".")
-                if candidate == zone_name:
-                    return zone_name
-        
-        raise errors.PluginError(
-            f"No OpusDNS zone found for {fqdn}. "
-            f"Available zones: {', '.join(zones)}"
-        )
-
-    def _get_zones(self) -> List[str]:
-        """List all DNS zones from OpusDNS API with caching.
-        
-        Returns:
-            List of zone names
+        # Start from second part (skip first like _acme-challenge)
+        for i in range(1, len(parts)):
+            candidate = ".".join(parts[i:])
+            logger.debug(f"Trying zone: {candidate}")
             
-        Raises:
-            errors.PluginError: If API call fails
-        """
-        if self._zone_cache is not None:
-            return self._zone_cache
-            
-        try:
-            zones = []
-            page = 1
-            with httpx.Client() as client:
-                while True:
+            try:
+                with httpx.Client() as client:
                     response = client.get(
-                        f"{self.api_endpoint}/v1/dns",
+                        f"{self.api_endpoint}/v1/dns/{candidate}",
                         headers={"X-Api-Key": self.api_key},
-                        params={"page": page, "page_size": 100},
                         timeout=30.0,
                     )
                     
-                    if response.status_code == 401:
-                        raise errors.PluginError("Invalid API key")
-                        
-                    response.raise_for_status()
-                    data = response.json()
-                    
-                    zones.extend([zone["name"] for zone in data.get("results", [])])
-                    
-                    if not data.get("pagination", {}).get("has_next_page", False):
-                        break
-                    page += 1
-                
-                self._zone_cache = zones
-                return zones
-                
-        except errors.PluginError:
-            raise
-        except (httpx.HTTPStatusError, httpx.RequestError) as e:
-            raise errors.PluginError(f"Failed to communicate with OpusDNS API: {e}")
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Valid zone response contains dnssec_status
+                        if "dnssec_status" in data:
+                            logger.debug(f"Found zone: {candidate}")
+                            return candidate
+                            
+            except httpx.RequestError as e:
+                logger.debug(f"Request error checking zone {candidate}: {e}")
+        
+        raise errors.PluginError(f"No OpusDNS zone found for {fqdn}")
 
     def _get_relative_name(self, fqdn: str, zone: str) -> str:
         """Get relative record name within a zone.
@@ -280,63 +235,3 @@ class OpusDNSClient:
                 wait_time = 2 ** attempt
                 logger.warning(f"Network error, retrying in {wait_time}s...")
                 time.sleep(wait_time)
-
-    def _wait_for_propagation(self, record_name: str, expected_value: str) -> None:
-        """Poll DNS to verify TXT record propagation on all authoritative nameservers.
-        
-        Queries OpusDNS authoritative nameservers directly, as Let's Encrypt does.
-        
-        Args:
-            record_name: Full DNS name to query
-            expected_value: Expected TXT record value (without quotes)
-            
-        Raises:
-            errors.PluginError: If record doesn't propagate on all nameservers within timeout
-        """
-        logger.info(f"Polling DNS for {record_name} propagation...")
-        
-        # OpusDNS authoritative nameservers
-        authoritative_nameservers = ["ns1.opusdns.com", "ns2.opusdns.net"]
-        
-        for attempt in range(self.max_attempts):
-            all_nameservers_ready = True
-            failed_nameservers = []
-            
-            for nameserver in authoritative_nameservers:
-                resolver = dns.resolver.Resolver()
-                resolver.nameservers = [nameserver]
-                
-                try:
-                    answers = resolver.resolve(record_name, "TXT")
-                    found = False
-                    for rdata in answers:
-                        # TXT records are returned with quotes
-                        txt_value = str(rdata).strip('"')
-                        if txt_value == expected_value:
-                            found = True
-                            break
-                    
-                    if not found:
-                        all_nameservers_ready = False
-                        failed_nameservers.append(nameserver)
-                        
-                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
-                    all_nameservers_ready = False
-                    failed_nameservers.append(nameserver)
-            
-            if all_nameservers_ready:
-                logger.info(f"DNS propagation verified on all authoritative nameservers after {attempt + 1} attempts")
-                return
-            
-            if attempt < self.max_attempts - 1:
-                logger.debug(
-                    f"Record not ready on nameservers {failed_nameservers}, "
-                    f"attempt {attempt + 1}/{self.max_attempts}"
-                )
-                time.sleep(self.polling_interval)
-        
-        raise errors.PluginError(
-            f"DNS propagation timeout: {record_name} did not propagate to all "
-            f"authoritative nameservers ({', '.join(authoritative_nameservers)}) "
-            f"within {self.max_attempts * self.polling_interval} seconds"
-        )
