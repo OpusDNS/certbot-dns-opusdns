@@ -64,7 +64,7 @@ class OpusDNSClient:
         
         Args:
             record_name: Full DNS name
-            record_content: TXT record content (unused, for interface compatibility)
+            record_content: TXT record content
             
         Note:
             Errors during cleanup are logged but not raised.
@@ -79,6 +79,8 @@ class OpusDNSClient:
                 zone=zone,
                 name=relative_name,
                 record_type="TXT",
+                ttl=self.ttl,
+                rdata=f'"{record_content}"',
                 operation="remove",
             )
         except Exception as e:
@@ -200,8 +202,8 @@ class OpusDNSClient:
             name: Relative record name
             record_type: Record type (e.g., "TXT")
             operation: "upsert" or "remove"
-            ttl: TTL in seconds (required for upsert)
-            rdata: Record data (required for upsert)
+            ttl: TTL in seconds (required for both upsert and remove)
+            rdata: Record data (required for both upsert and remove)
             
         Raises:
             errors.PluginError: If API call fails after retries
@@ -210,7 +212,7 @@ class OpusDNSClient:
             "ops": [
                 {
                     "op": operation,
-                    "rrset": {
+                    "record": {
                         "name": name,
                         "type": record_type,
                     },
@@ -218,16 +220,18 @@ class OpusDNSClient:
             ]
         }
         
-        if operation == "upsert":
-            payload["ops"][0]["rrset"]["ttl"] = ttl
-            payload["ops"][0]["rrset"]["records"] = [{"rdata": rdata}]
+        # Both upsert and remove operations require ttl and rdata
+        if ttl is not None:
+            payload["ops"][0]["record"]["ttl"] = ttl
+        if rdata is not None:
+            payload["ops"][0]["record"]["rdata"] = rdata
         
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 with httpx.Client() as client:
                     response = client.patch(
-                        f"{self.api_endpoint}/v1/dns/{zone}/rrsets",
+                        f"{self.api_endpoint}/v1/dns/{zone}/records",
                         headers={
                             "X-Api-Key": self.api_key,
                             "Content-Type": "application/json",
@@ -278,37 +282,61 @@ class OpusDNSClient:
                 time.sleep(wait_time)
 
     def _wait_for_propagation(self, record_name: str, expected_value: str) -> None:
-        """Poll DNS to verify TXT record propagation.
+        """Poll DNS to verify TXT record propagation on all authoritative nameservers.
+        
+        Queries OpusDNS authoritative nameservers directly, as Let's Encrypt does.
         
         Args:
             record_name: Full DNS name to query
             expected_value: Expected TXT record value (without quotes)
             
         Raises:
-            errors.PluginError: If record doesn't propagate within timeout
+            errors.PluginError: If record doesn't propagate on all nameservers within timeout
         """
         logger.info(f"Polling DNS for {record_name} propagation...")
         
-        resolver = dns.resolver.Resolver()
-        resolver.nameservers = ["8.8.8.8", "1.1.1.1"]
+        # OpusDNS authoritative nameservers
+        authoritative_nameservers = ["ns1.opusdns.com", "ns2.opusdns.net"]
         
         for attempt in range(self.max_attempts):
-            try:
-                answers = resolver.resolve(record_name, "TXT")
-                for rdata in answers:
-                    # TXT records are returned with quotes
-                    txt_value = str(rdata).strip('"')
-                    if txt_value == expected_value:
-                        logger.info(f"DNS propagation verified after {attempt + 1} attempts")
-                        return
-            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
-                pass
+            all_nameservers_ready = True
+            failed_nameservers = []
+            
+            for nameserver in authoritative_nameservers:
+                resolver = dns.resolver.Resolver()
+                resolver.nameservers = [nameserver]
+                
+                try:
+                    answers = resolver.resolve(record_name, "TXT")
+                    found = False
+                    for rdata in answers:
+                        # TXT records are returned with quotes
+                        txt_value = str(rdata).strip('"')
+                        if txt_value == expected_value:
+                            found = True
+                            break
+                    
+                    if not found:
+                        all_nameservers_ready = False
+                        failed_nameservers.append(nameserver)
+                        
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+                    all_nameservers_ready = False
+                    failed_nameservers.append(nameserver)
+            
+            if all_nameservers_ready:
+                logger.info(f"DNS propagation verified on all authoritative nameservers after {attempt + 1} attempts")
+                return
             
             if attempt < self.max_attempts - 1:
-                logger.debug(f"Record not found, attempt {attempt + 1}/{self.max_attempts}")
+                logger.debug(
+                    f"Record not ready on nameservers {failed_nameservers}, "
+                    f"attempt {attempt + 1}/{self.max_attempts}"
+                )
                 time.sleep(self.polling_interval)
         
         raise errors.PluginError(
-            f"DNS propagation timeout: {record_name} did not propagate within "
-            f"{self.max_attempts * self.polling_interval} seconds"
+            f"DNS propagation timeout: {record_name} did not propagate to all "
+            f"authoritative nameservers ({', '.join(authoritative_nameservers)}) "
+            f"within {self.max_attempts * self.polling_interval} seconds"
         )
