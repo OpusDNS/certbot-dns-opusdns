@@ -1,7 +1,0 @@
-include README.md
-include LICENSE
-include pyproject.toml
-include opusdns.ini.example
-include .env.example
-recursive-include certbot_dns_opusdns *.py
-recursive-include tests *.py
