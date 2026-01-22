@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  certbot:
+    build: .
+    container_name: certbot-dns-opusdns
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./logs:/var/log/letsencrypt
+      - ./credentials:/credentials:ro
+    environment:
+      - OPUSDNS_API_KEY=${OPUSDNS_API_KEY:-}
+    command: >
+      certonly
+      --authenticator dns-opusdns
+      --dns-opusdns-credentials /credentials/opusdns.ini
+      --dns-opusdns-propagation-seconds 60
+      --agree-tos
+      --email ${EMAIL:-admin@example.com}
+      --non-interactive
+      --staging
+      -d ${DOMAIN:-example.com}
+      -d ${WILDCARD_DOMAIN:-*.example.com}
+
+  # Test service to run unit tests
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - .:/app
+    command: pytest -v
+
+volumes:
+  letsencrypt:
+  logs:

@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "certbot-dns-opusdns"
+version = "1.0.0"
+description = "OpusDNS DNS Authenticator plugin for Certbot"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "OpusDNS", email = "support@opusdns.com"}
+]
+keywords = ["certbot", "dns", "opusdns", "acme", "letsencrypt"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Plugins",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: Name Service (DNS)",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "certbot>=1.1.0",
+    "httpx>=0.24.0",
+    "dnspython>=2.0.0",
+    "zope.interface",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-asyncio>=0.21.0",
+    "responses>=0.23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/opusdns/certbot-dns-opusdns"
+Documentation = "https://github.com/opusdns/certbot-dns-opusdns#readme"
+Repository = "https://github.com/opusdns/certbot-dns-opusdns"
+Issues = "https://github.com/opusdns/certbot-dns-opusdns/issues"
+
+[project.entry-points."certbot.plugins"]
+dns-opusdns = "certbot_dns_opusdns.dns_opusdns:Authenticator"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["certbot_dns_opusdns*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"

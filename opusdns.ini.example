@@ -1,0 +1,11 @@
+# Example OpusDNS credentials file
+# Copy this to credentials/opusdns.ini and fill in your values
+
+# Required: Your OpusDNS API key
+dns_opusdns_api_key = opk_xxxxxxxxxxxxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_xxxxxx
+
+# Optional: API endpoint (defaults to https://api.opusdns.com)
+# dns_opusdns_api_endpoint = https://sandbox.opusdns.com
+
+# Optional: TTL for TXT records in seconds (defaults to 60)
+# dns_opusdns_ttl = 60
