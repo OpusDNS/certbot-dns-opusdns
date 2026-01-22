@@ -132,27 +132,35 @@ class OpusDNSClient:
             return self._zone_cache
             
         try:
+            zones = []
+            page = 1
             with httpx.Client() as client:
-                response = client.get(
-                    f"{self.api_endpoint}/v1/dns",
-                    headers={"X-Api-Key": self.api_key},
-                    params={"page": 1, "page_size": 100},
-                    timeout=30.0,
-                )
-                
-                if response.status_code == 401:
-                    raise errors.PluginError("Invalid API key")
+                while True:
+                    response = client.get(
+                        f"{self.api_endpoint}/v1/dns",
+                        headers={"X-Api-Key": self.api_key},
+                        params={"page": page, "page_size": 100},
+                        timeout=30.0,
+                    )
                     
-                response.raise_for_status()
-                data = response.json()
+                    if response.status_code == 401:
+                        raise errors.PluginError("Invalid API key")
+                        
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    zones.extend([zone["name"] for zone in data.get("results", [])])
+                    
+                    if not data.get("pagination", {}).get("has_next_page", False):
+                        break
+                    page += 1
                 
-                zones = [zone["name"] for zone in data.get("results", [])]
                 self._zone_cache = zones
                 return zones
                 
-        except httpx.HTTPStatusError as e:
-            raise errors.PluginError(f"Failed to list zones: {e}")
-        except Exception as e:
+        except errors.PluginError:
+            raise
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise errors.PluginError(f"Failed to communicate with OpusDNS API: {e}")
 
     def _get_relative_name(self, fqdn: str, zone: str) -> str:
