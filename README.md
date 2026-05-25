@@ -1,5 +1,10 @@
 # certbot-dns-opusdns
 
+[![PyPI version](https://img.shields.io/pypi/v/certbot-dns-opusdns.svg)](https://pypi.org/project/certbot-dns-opusdns/)
+[![CI](https://github.com/OpusDNS/certbot-dns-opusdns/actions/workflows/ci.yml/badge.svg)](https://github.com/OpusDNS/certbot-dns-opusdns/actions/workflows/ci.yml)
+[![Python versions](https://img.shields.io/pypi/pyversions/certbot-dns-opusdns.svg)](https://pypi.org/project/certbot-dns-opusdns/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 OpusDNS DNS Authenticator plugin for [Certbot](https://certbot.eff.org/).
 
 This plugin enables automatic DNS-01 challenge verification for Let's Encrypt certificates using OpusDNS as your DNS provider.
@@ -7,7 +12,7 @@ This plugin enables automatic DNS-01 challenge verification for Let's Encrypt ce
 ## Features
 
 - ✅ Automatic DNS-01 challenge record management
-- ✅ DNS propagation polling (ensures records are live before validation)
+- ✅ DNS propagation polling (verifies records via 8.8.8.8 and 1.1.1.1)
 - ✅ Retry logic for rate limits and transient errors
 - ✅ Support for wildcard certificates
 - ✅ Configurable API endpoint (production/sandbox)
@@ -24,7 +29,7 @@ pip install certbot-dns-opusdns
 ### From source
 
 ```bash
-git clone https://github.com/opusdns/certbot-dns-opusdns
+git clone https://github.com/OpusDNS/certbot-dns-opusdns
 cd certbot-dns-opusdns
 pip install .
 ```
@@ -37,35 +42,33 @@ docker build -t certbot-dns-opusdns .
 
 ## Prerequisites
 
-1. **OpusDNS Account**: Sign up at [opusdns.com](https://opusdns.com)
-2. **API Key**: Create an API key via the OpusDNS dashboard or API:
-   ```bash
-   curl -X POST https://api.opusdns.com/auth/client_credentials \
-     -H "Authorization: Bearer <your_user_token>" \
-     -H "Content-Type: application/json"
-   ```
-3. **DNS Zone**: Your domain must be managed by OpusDNS
+1. **Python 3.10+**
+2. **OpusDNS Account**: Sign up at [opusdns.com](https://opusdns.com)
+3. **API Key**: Create an API key via the OpusDNS dashboard
+4. **DNS Zone**: Your domain must be managed by OpusDNS
 
 ## Configuration
 
 ### Credentials File
 
-Create a credentials file (e.g., `opusdns.ini`):
+Create a credentials file (e.g., `~/.secrets/certbot/opusdns.ini`):
 
 ```ini
 # Required: Your OpusDNS API key
 dns_opusdns_api_key = opk_xxxxxxxxxxxxxxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_xxxxxx
 
 # Optional: API endpoint (defaults to https://api.opusdns.com)
-dns_opusdns_api_endpoint = https://api.opusdns.com
+# dns_opusdns_api_endpoint = https://api.opusdns.com
 
 # Optional: TTL for TXT records in seconds (defaults to 60)
-dns_opusdns_ttl = 60
+# dns_opusdns_ttl = 60
 ```
 
 **Important**: Protect your credentials file:
 ```bash
-chmod 600 opusdns.ini
+mkdir -p ~/.secrets/certbot
+chmod 700 ~/.secrets/certbot
+chmod 600 ~/.secrets/certbot/opusdns.ini
 ```
 
 ## Usage
@@ -75,7 +78,7 @@ chmod 600 opusdns.ini
 ```bash
 certbot certonly \
   --authenticator dns-opusdns \
-  --dns-opusdns-credentials /path/to/opusdns.ini \
+  --dns-opusdns-credentials ~/.secrets/certbot/opusdns.ini \
   --dns-opusdns-propagation-seconds 60 \
   -d example.com
 ```
@@ -85,7 +88,7 @@ certbot certonly \
 ```bash
 certbot certonly \
   --authenticator dns-opusdns \
-  --dns-opusdns-credentials /path/to/opusdns.ini \
+  --dns-opusdns-credentials ~/.secrets/certbot/opusdns.ini \
   --dns-opusdns-propagation-seconds 60 \
   -d example.com \
   -d "*.example.com"
@@ -96,7 +99,7 @@ certbot certonly \
 ```bash
 certbot certonly \
   --authenticator dns-opusdns \
-  --dns-opusdns-credentials /path/to/opusdns.ini \
+  --dns-opusdns-credentials ~/.secrets/certbot/opusdns.ini \
   -d example.com \
   -d www.example.com \
   -d api.example.com
@@ -159,9 +162,9 @@ docker run -it --rm \
 
 ## How It Works
 
-1. **Zone Detection**: Plugin lists your OpusDNS zones and finds the longest matching zone for your domain
-2. **Record Creation**: Creates `_acme-challenge` TXT record via `PATCH /v1/dns/{zone}/rrsets` (upsert operation)
-3. **DNS Polling**: Polls public DNS (8.8.8.8, 1.1.1.1) to verify record propagation (10 attempts × 6s)
+1. **Zone Detection**: Iterates through domain parts to find the matching OpusDNS zone via `GET /v1/dns/{candidate}`
+2. **Record Creation**: Creates `_acme-challenge` TXT record via `PATCH /v1/dns/{zone}/records` (upsert operation)
+3. **DNS Propagation Polling**: Polls public DNS resolvers (8.8.8.8, 1.1.1.1) to verify record propagation
 4. **Validation**: Let's Encrypt validates the challenge
 5. **Cleanup**: Removes the challenge record (best-effort, logs errors)
 
@@ -169,11 +172,10 @@ docker run -it --rm \
 
 ### Authentication
 - Header: `X-Api-Key: opk_...`
-- Format: 67 characters total
 
 ### Endpoints Used
-- `GET /v1/dns` - List zones for zone detection
-- `PATCH /v1/dns/{zone}/rrsets` - Create/remove TXT records
+- `GET /v1/dns/{zone}` — Zone lookup for zone detection
+- `PATCH /v1/dns/{zone}/records` — Create/remove TXT records
 
 ### Error Handling
 - **401 Unauthorized**: Invalid API key
@@ -204,8 +206,6 @@ docker run -it --rm \
 
 ## Development
 
-### Running Tests
-
 ```bash
 # Install dev dependencies
 pip install -e ".[dev]"
@@ -215,46 +215,24 @@ pytest -v
 
 # Run tests with coverage
 pytest --cov=certbot_dns_opusdns --cov-report=html
-```
 
-### Docker Tests
+# Lint
+ruff check certbot_dns_opusdns tests
 
-```bash
-docker-compose up test
+# Type check
+mypy certbot_dns_opusdns
 ```
 
 ## Contributing
 
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
-Apache License 2.0 - See [LICENSE](LICENSE) file
+MIT License — See [LICENSE](LICENSE) file.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/opusdns/certbot-dns-opusdns/issues)
+- **Issues**: [GitHub Issues](https://github.com/OpusDNS/certbot-dns-opusdns/issues)
 - **Documentation**: [OpusDNS Docs](https://docs.opusdns.com)
 - **Email**: support@opusdns.com
-
-## Related Projects
-
-- [opusdns-go-client](https://github.com/opusdns/opusdns-go-client) - Go API client
-- [caddy-dns-opusdns](https://github.com/opusdns/caddy-dns-opusdns) - Caddy DNS module
-- [opusdns-lego-provider](https://github.com/opusdns/opusdns-lego-provider) - go-acme/lego provider
-- [opusdns-acme-sh-hook](https://github.com/opusdns/opusdns-acme-sh-hook) - acme.sh hook
-
-## Changelog
-
-### 1.0.0 (2025-01-XX)
-- Initial release
-- DNS-01 challenge support
-- Automatic DNS propagation polling
-- Retry logic for rate limits
-- Wildcard certificate support
