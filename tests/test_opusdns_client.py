@@ -1,9 +1,10 @@
 """Tests for OpusDNS client."""
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from certbot import errors
+
+from unittest.mock import MagicMock, Mock, patch
+
 import httpx
-import dns.resolver
+import pytest
+from certbot import errors
 
 from certbot_dns_opusdns.opusdns_client import OpusDNSClient
 
@@ -22,6 +23,7 @@ class TestOpusDNSClient:
 
     def _zone_response(self, valid_zones):
         """Helper: return a side_effect function that returns 200 for valid zones, 404 otherwise."""
+
         def side_effect(url, **kwargs):
             resp = Mock()
             for zone in valid_zones:
@@ -32,6 +34,7 @@ class TestOpusDNSClient:
             resp.status_code = 404
             resp.json.return_value = {"error": "not found"}
             return resp
+
         return side_effect
 
     def test_find_zone_exact_match(self, client):
@@ -80,7 +83,8 @@ class TestOpusDNSClient:
 
     def test_get_relative_name(self, client):
         """Test relative name extraction."""
-        assert client._get_relative_name("_acme-challenge.example.com", "example.com") == "_acme-challenge"
+        result = client._get_relative_name("_acme-challenge.example.com", "example.com")
+        assert result == "_acme-challenge"
         assert client._get_relative_name("example.com", "example.com") == "@"
         assert client._get_relative_name("sub.example.com", "example.com") == "sub"
 
@@ -192,9 +196,7 @@ class TestOpusDNSClient:
 
     def test_patch_rrset_rate_limit_retry(self, client):
         """Test rate limit retry logic."""
-        with patch("httpx.Client") as mock_client_class, \
-             patch("time.sleep"):
-
+        with patch("httpx.Client") as mock_client_class, patch("time.sleep"):
             mock_response_429 = Mock()
             mock_response_429.status_code = 429
 
@@ -219,8 +221,10 @@ class TestOpusDNSClient:
 
     def test_add_txt_record(self, client):
         """Test adding TXT record end-to-end."""
-        with patch("httpx.Client") as mock_client_class, \
-             patch.object(client, "_wait_for_propagation"):
+        with (
+            patch("httpx.Client") as mock_client_class,
+            patch.object(client, "_wait_for_propagation"),
+        ):
             # Mock zone detection (GET returns 200 for example.com)
             mock_zone_resp = Mock()
             mock_zone_resp.status_code = 200
