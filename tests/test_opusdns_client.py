@@ -20,74 +20,61 @@ class TestOpusDNSClient:
             ttl=60,
         )
 
-    @pytest.fixture
-    def mock_zones_response(self):
-        """Mock zones API response."""
-        return {
-            "results": [
-                {"name": "example.com.", "dnssec_status": "disabled"},
-                {"name": "sub.example.com.", "dnssec_status": "disabled"},
-            ],
-            "pagination": {"total_pages": 1, "current_page": 1, "has_next_page": False},
-        }
+    def _zone_response(self, valid_zones):
+        """Helper: return a side_effect function that returns 200 for valid zones, 404 otherwise."""
+        def side_effect(url, **kwargs):
+            resp = Mock()
+            for zone in valid_zones:
+                if url.endswith(f"/v1/dns/{zone}"):
+                    resp.status_code = 200
+                    resp.json.return_value = {"dnssec_status": "disabled"}
+                    return resp
+            resp.status_code = 404
+            resp.json.return_value = {"error": "not found"}
+            return resp
+        return side_effect
 
-    def test_find_zone_exact_match(self, client, mock_zones_response):
-        """Test zone detection with exact match."""
+    def test_find_zone_exact_match(self, client):
+        """Test zone detection with exact domain (e.g. example.com → zone example.com)."""
         with patch("httpx.Client") as mock_client_class:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = mock_zones_response
-            
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
-            mock_client.get.return_value = mock_response
+            mock_client.get.side_effect = self._zone_response(["example.com"])
             mock_client_class.return_value = mock_client
-            
-            zone = client._find_zone("example.com")
-            assert zone == "example.com"
 
-    def test_find_zone_subdomain(self, client, mock_zones_response):
-        """Test zone detection with subdomain."""
-        with patch("httpx.Client") as mock_client_class:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = mock_zones_response
-            
-            mock_client = MagicMock()
-            mock_client.__enter__.return_value = mock_client
-            mock_client.get.return_value = mock_response
-            mock_client_class.return_value = mock_client
-            
             zone = client._find_zone("_acme-challenge.example.com")
             assert zone == "example.com"
 
-    def test_find_zone_longest_match(self, client, mock_zones_response):
-        """Test zone detection prefers longest match."""
+    def test_find_zone_subdomain(self, client):
+        """Test zone detection with subdomain."""
         with patch("httpx.Client") as mock_client_class:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = mock_zones_response
-            
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
-            mock_client.get.return_value = mock_response
+            mock_client.get.side_effect = self._zone_response(["example.com"])
             mock_client_class.return_value = mock_client
-            
+
+            zone = client._find_zone("sub.example.com")
+            assert zone == "example.com"
+
+    def test_find_zone_longest_match(self, client):
+        """Test zone detection prefers longest match (first found)."""
+        with patch("httpx.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__enter__.return_value = mock_client
+            mock_client.get.side_effect = self._zone_response(["sub.example.com", "example.com"])
+            mock_client_class.return_value = mock_client
+
             zone = client._find_zone("test.sub.example.com")
             assert zone == "sub.example.com"
 
-    def test_find_zone_not_found(self, client, mock_zones_response):
+    def test_find_zone_not_found(self, client):
         """Test zone detection raises error when no match."""
         with patch("httpx.Client") as mock_client_class:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = mock_zones_response
-            
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
-            mock_client.get.return_value = mock_response
+            mock_client.get.side_effect = self._zone_response([])
             mock_client_class.return_value = mock_client
-            
+
             with pytest.raises(errors.PluginError, match="No OpusDNS zone found"):
                 client._find_zone("notfound.com")
 
@@ -107,12 +94,12 @@ class TestOpusDNSClient:
         with patch("httpx.Client") as mock_client_class:
             mock_response = Mock()
             mock_response.status_code = 204
-            
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
             mock_client.patch.return_value = mock_response
             mock_client_class.return_value = mock_client
-            
+
             client._patch_rrset(
                 zone="example.com",
                 name="_acme-challenge",
@@ -121,39 +108,39 @@ class TestOpusDNSClient:
                 ttl=60,
                 rdata='"test-value"',
             )
-            
+
             mock_client.patch.assert_called_once()
             call_args = mock_client.patch.call_args
-            
+
             assert call_args[1]["json"]["ops"][0]["op"] == "upsert"
-            assert call_args[1]["json"]["ops"][0]["rrset"]["name"] == "_acme-challenge"
-            assert call_args[1]["json"]["ops"][0]["rrset"]["type"] == "TXT"
-            assert call_args[1]["json"]["ops"][0]["rrset"]["ttl"] == 60
+            assert call_args[1]["json"]["ops"][0]["record"]["name"] == "_acme-challenge"
+            assert call_args[1]["json"]["ops"][0]["record"]["type"] == "TXT"
+            assert call_args[1]["json"]["ops"][0]["record"]["ttl"] == 60
 
     def test_patch_rrset_remove(self, client):
         """Test remove operation."""
         with patch("httpx.Client") as mock_client_class:
             mock_response = Mock()
             mock_response.status_code = 204
-            
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
             mock_client.patch.return_value = mock_response
             mock_client_class.return_value = mock_client
-            
+
             client._patch_rrset(
                 zone="example.com",
                 name="_acme-challenge",
                 record_type="TXT",
                 operation="remove",
             )
-            
+
             mock_client.patch.assert_called_once()
             call_args = mock_client.patch.call_args
-            
+
             assert call_args[1]["json"]["ops"][0]["op"] == "remove"
-            assert "ttl" not in call_args[1]["json"]["ops"][0]["rrset"]
-            assert "records" not in call_args[1]["json"]["ops"][0]["rrset"]
+            assert "ttl" not in call_args[1]["json"]["ops"][0]["record"]
+            assert "rdata" not in call_args[1]["json"]["ops"][0]["record"]
 
     def test_patch_rrset_auth_error(self, client):
         """Test authentication error handling."""
@@ -163,12 +150,12 @@ class TestOpusDNSClient:
             mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
                 "Unauthorized", request=Mock(), response=mock_response
             )
-            
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
             mock_client.patch.return_value = mock_response
             mock_client_class.return_value = mock_client
-            
+
             with pytest.raises(errors.PluginError, match="Invalid API key"):
                 client._patch_rrset(
                     zone="example.com",
@@ -187,12 +174,12 @@ class TestOpusDNSClient:
             mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
                 "Not Found", request=Mock(), response=mock_response
             )
-            
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
             mock_client.patch.return_value = mock_response
             mock_client_class.return_value = mock_client
-            
+
             with pytest.raises(errors.PluginError, match="Zone .* not found"):
                 client._patch_rrset(
                     zone="example.com",
@@ -207,19 +194,18 @@ class TestOpusDNSClient:
         """Test rate limit retry logic."""
         with patch("httpx.Client") as mock_client_class, \
              patch("time.sleep"):
-            
-            # First call: rate limit, second call: success
+
             mock_response_429 = Mock()
             mock_response_429.status_code = 429
-            
-            mock_response_200 = Mock()
-            mock_response_200.status_code = 204
-            
+
+            mock_response_204 = Mock()
+            mock_response_204.status_code = 204
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
-            mock_client.patch.side_effect = [mock_response_429, mock_response_200]
+            mock_client.patch.side_effect = [mock_response_429, mock_response_204]
             mock_client_class.return_value = mock_client
-            
+
             client._patch_rrset(
                 zone="example.com",
                 name="_acme-challenge",
@@ -228,80 +214,49 @@ class TestOpusDNSClient:
                 ttl=60,
                 rdata='"test"',
             )
-            
+
             assert mock_client.patch.call_count == 2
 
-    def test_wait_for_propagation_success(self, client):
-        """Test DNS propagation polling succeeds."""
-        mock_rdata = Mock()
-        mock_rdata.__str__ = Mock(return_value='"test-value"')
-        
-        with patch("dns.resolver.Resolver") as mock_resolver_class:
-            mock_resolver = Mock()
-            mock_resolver.resolve.return_value = [mock_rdata]
-            mock_resolver_class.return_value = mock_resolver
-            
-            client._wait_for_propagation("_acme-challenge.example.com", "test-value")
-            
-            mock_resolver.resolve.assert_called_with("_acme-challenge.example.com", "TXT")
-
-    def test_wait_for_propagation_timeout(self, client):
-        """Test DNS propagation timeout."""
-        client.max_attempts = 2
-        client.polling_interval = 0.1
-        
-        with patch("dns.resolver.Resolver") as mock_resolver_class, \
-             patch("time.sleep"):
-            
-            mock_resolver = Mock()
-            mock_resolver.resolve.side_effect = dns.resolver.NXDOMAIN()
-            mock_resolver_class.return_value = mock_resolver
-            
-            with pytest.raises(errors.PluginError, match="DNS propagation timeout"):
-                client._wait_for_propagation("_acme-challenge.example.com", "test-value")
-
-    def test_add_txt_record(self, client, mock_zones_response):
+    def test_add_txt_record(self, client):
         """Test adding TXT record end-to-end."""
-        with patch("httpx.Client") as mock_client_class, \
-             patch.object(client, "_wait_for_propagation"):
-            
-            # Mock zones API
-            mock_zones_resp = Mock()
-            mock_zones_resp.status_code = 200
-            mock_zones_resp.json.return_value = mock_zones_response
-            
-            # Mock patch API
+        with patch("httpx.Client") as mock_client_class:
+            # Mock zone detection (GET returns 200 for example.com)
+            mock_zone_resp = Mock()
+            mock_zone_resp.status_code = 200
+            mock_zone_resp.json.return_value = {"dnssec_status": "disabled"}
+
+            # Mock patch (record creation)
             mock_patch_resp = Mock()
             mock_patch_resp.status_code = 204
-            
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
-            mock_client.get.return_value = mock_zones_resp
+            mock_client.get.return_value = mock_zone_resp
             mock_client.patch.return_value = mock_patch_resp
             mock_client_class.return_value = mock_client
-            
+
             client.add_txt_record("_acme-challenge.example.com", "test-value", 60)
-            
+
             assert mock_client.patch.called
 
-    def test_del_txt_record_best_effort(self, client, mock_zones_response):
+    def test_del_txt_record_best_effort(self, client):
         """Test deleting TXT record doesn't raise on error."""
         with patch("httpx.Client") as mock_client_class:
-            mock_zones_resp = Mock()
-            mock_zones_resp.status_code = 200
-            mock_zones_resp.json.return_value = mock_zones_response
-            
+            mock_zone_resp = Mock()
+            mock_zone_resp.status_code = 200
+            mock_zone_resp.json.return_value = {"dnssec_status": "disabled"}
+
             mock_patch_resp = Mock()
             mock_patch_resp.status_code = 500
             mock_patch_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
                 "Server Error", request=Mock(), response=mock_patch_resp
             )
-            
+
             mock_client = MagicMock()
             mock_client.__enter__.return_value = mock_client
-            mock_client.get.return_value = mock_zones_resp
+            mock_client.get.return_value = mock_zone_resp
             mock_client.patch.return_value = mock_patch_resp
             mock_client_class.return_value = mock_client
-            
+
             # Should not raise
             client.del_txt_record("_acme-challenge.example.com", "test-value")
