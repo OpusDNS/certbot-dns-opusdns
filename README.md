@@ -1,8 +1,8 @@
 # certbot-dns-opusdns
 
-[![PyPI version](https://img.shields.io/pypi/v/certbot-dns-opusdns.svg)](https://pypi.org/project/certbot-dns-opusdns/)
-[![CI](https://github.com/OpusDNS/certbot-dns-opusdns/actions/workflows/ci.yml/badge.svg)](https://github.com/OpusDNS/certbot-dns-opusdns/actions/workflows/ci.yml)
-[![Python versions](https://img.shields.io/pypi/pyversions/certbot-dns-opusdns.svg)](https://pypi.org/project/certbot-dns-opusdns/)
+[![PyPI version](https://img.shields.io/pypi/v/certbot-dns-opusdns)](https://pypi.org/project/certbot-dns-opusdns/)
+[![CI](https://github.com/OpusDNS/certbot-dns-opusdns/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/OpusDNS/certbot-dns-opusdns/actions/workflows/ci.yml)
+[![Python versions](https://img.shields.io/pypi/pyversions/certbot-dns-opusdns)](https://pypi.org/project/certbot-dns-opusdns/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 OpusDNS DNS Authenticator plugin for [Certbot](https://certbot.eff.org/).
