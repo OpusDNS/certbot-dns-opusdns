@@ -6,12 +6,12 @@ This plugin enables automatic DNS-01 challenge verification for Let's Encrypt ce
 
 ## Features
 
-- ✅ Automatic DNS-01 challenge record management
-- ✅ DNS propagation polling (ensures records are live before validation)
-- ✅ Retry logic for rate limits and transient errors
-- ✅ Support for wildcard certificates
-- ✅ Configurable API endpoint (production/sandbox)
-- ✅ Best-effort cleanup (doesn't fail on cleanup errors)
+- Automatic DNS-01 challenge record management
+- DNS propagation polling (ensures records are live before validation)
+- Retry logic for rate limits and transient errors
+- Support for wildcard certificates
+- Configurable API endpoint (production/sandbox)
+- Best-effort cleanup (doesn't fail on cleanup errors)
 
 ## Installation
 
