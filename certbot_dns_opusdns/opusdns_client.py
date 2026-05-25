@@ -18,10 +18,12 @@ class OpusDNSClient:
         api_key: str,
         api_endpoint: str = "https://api.opusdns.com",
         ttl: int = 60,
+        propagation_nameservers: list[str] | None = None,
     ):
         self.api_key = api_key
         self.api_endpoint = api_endpoint.rstrip("/")
         self.ttl = ttl
+        self.propagation_nameservers = propagation_nameservers or ["8.8.8.8", "1.1.1.1"]
         self.max_attempts = 10
         self.polling_interval = 6
 
@@ -92,7 +94,7 @@ class OpusDNSClient:
         Raises:
             errors.PluginError: If record is not found after max attempts
         """
-        resolvers = ["8.8.8.8", "1.1.1.1"]
+        resolvers = self.propagation_nameservers
 
         for attempt in range(self.max_attempts):
             for resolver_ip in resolvers:

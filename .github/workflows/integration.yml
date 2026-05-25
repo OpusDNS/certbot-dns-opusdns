@@ -44,4 +44,5 @@ jobs:
           OPUSDNS_API_ENDPOINT: ${{ secrets.OPUSDNS_API_ENDPOINT }}
           TEST_ZONE_NAME: "certbot-test.opusdns.dev."
         run: |
-          pytest tests/test_integration.py -v --timeout=120
+          NS_IP=$(dig +short ns1.opusdns.dev | head -1)
+          TEST_DNS_SERVER="${NS_IP}" pytest tests/test_integration.py -v --timeout=120
