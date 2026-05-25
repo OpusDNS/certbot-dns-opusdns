@@ -29,6 +29,11 @@ env/
 .coverage
 htmlcov/
 .tox/
+coverage.xml
+
+# Type checking / Linting
+.mypy_cache/
+.ruff_cache/
 
 # IDE
 .vscode/

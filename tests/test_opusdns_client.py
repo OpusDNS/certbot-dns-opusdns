@@ -219,7 +219,8 @@ class TestOpusDNSClient:
 
     def test_add_txt_record(self, client):
         """Test adding TXT record end-to-end."""
-        with patch("httpx.Client") as mock_client_class:
+        with patch("httpx.Client") as mock_client_class, \
+             patch.object(client, "_wait_for_propagation"):
             # Mock zone detection (GET returns 200 for example.com)
             mock_zone_resp = Mock()
             mock_zone_resp.status_code = 200
