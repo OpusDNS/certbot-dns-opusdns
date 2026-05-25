@@ -223,16 +223,6 @@ pytest --cov=certbot_dns_opusdns --cov-report=html
 docker-compose up test
 ```
 
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
 ## License
 
 Apache License 2.0 - See [LICENSE](LICENSE) file
@@ -242,19 +232,3 @@ Apache License 2.0 - See [LICENSE](LICENSE) file
 - **Issues**: [GitHub Issues](https://github.com/opusdns/certbot-dns-opusdns/issues)
 - **Documentation**: [OpusDNS Docs](https://docs.opusdns.com)
 - **Email**: support@opusdns.com
-
-## Related Projects
-
-- [opusdns-go-client](https://github.com/opusdns/opusdns-go-client) - Go API client
-- [caddy-dns-opusdns](https://github.com/opusdns/caddy-dns-opusdns) - Caddy DNS module
-- [opusdns-lego-provider](https://github.com/opusdns/opusdns-lego-provider) - go-acme/lego provider
-- [opusdns-acme-sh-hook](https://github.com/opusdns/opusdns-acme-sh-hook) - acme.sh hook
-
-## Changelog
-
-### 1.0.0 (2025-01-XX)
-- Initial release
-- DNS-01 challenge support
-- Automatic DNS propagation polling
-- Retry logic for rate limits
-- Wildcard certificate support
