@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
 
@@ -27,7 +27,7 @@ jobs:
         run: ruff check certbot_dns_opusdns tests
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
@@ -49,7 +49,7 @@ jobs:
         run: pytest -v --cov=certbot_dns_opusdns --cov-report=term
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [lint, test]
     steps:
       - uses: actions/checkout@v7
@@ -75,3 +75,14 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  # One check that stands for every job above. It is meant to become the only
+  # required status check, so adding a job or a matrix entry does not change
+  # the required checks. Add every new job to `needs`.
+  ci-ok:
+    if: always()
+    needs: [lint, test, build]
+    runs-on: self-hosted
+    steps:
+      - run: exit 1
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
