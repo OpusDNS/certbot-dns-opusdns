@@ -30,11 +30,10 @@ jobs:
       - name: Run tests
         run: pytest -v
 
-  publish:
-    name: Build & Publish to PyPI
+  build:
+    name: Build package
     needs: test
     runs-on: self-hosted
-    environment: pypi
     steps:
       - uses: actions/checkout@v7
 
@@ -51,6 +50,30 @@ jobs:
 
       - name: Build package
         run: python -m build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # Only the upload runs on a GitHub-hosted runner. pypa/gh-action-pypi-publish supports
+  # self-hosted runners only as "best effort" and recommends building there and publishing
+  # from a GitHub-hosted job; npm already rejected provenance from our runners
+  # (api-spec-ts-generator). Trusted Publishing matches workflow file and environment, not
+  # the job, so the PyPI side needs no change.
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
